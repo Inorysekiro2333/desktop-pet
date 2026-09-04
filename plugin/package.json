@@ -1,0 +1,22 @@
+{
+  "name": "dsh-penguin-pet",
+  "version": "1.0.0",
+  "description": "企鹅娘桌宠 —— 一个轻量的 DSH 桌宠，通过 webserver index 注入显示在 Harness Web 窗口内（host-only，无客户端构建）。",
+  "type": "module",
+  "main": "index.mjs",
+  "exports": {
+    ".": "./index.mjs",
+    "./package.json": "./package.json"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "files": [
+    "index.mjs",
+    "cordis.patch.yml",
+    "spirit-240.txt"
+  ],
+  "license": "MIT"
+}

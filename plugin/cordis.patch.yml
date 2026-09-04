@@ -1,0 +1,13 @@
+# dsh-penguin-pet bundle patch
+#
+# Installed through the official CLI:
+#   dsh plugin --profile desktop add file:C:/Users/liuzhanhong/Desktop/OH-WorkSpace/desktop-pet/plugin
+# The command reconciles `dsh.profile.bundles` against installed packages and,
+# seeing the `dsh.bundle.patch` declaration, appends `dsh-penguin-pet` to the
+# bundle stack. Profile boot then merges this single `insert` of the plugin
+# row. The plugin is host-only: it listens on `webserver/index-inject` and
+# pushes a <style> + <body><script> row that renders the pet inside the
+# served page.
+- insert:
+    - id: penguin-pet
+      name: 'dsh-penguin-pet'

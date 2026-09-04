@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>企鹅娘桌宠</title>
+<style>
+  :root {
+    --pet-w: 150px;             /* 桌宠显示宽度 */
+    --shake-t: 0s;
+  }
+  * { margin:0; padding:0; box-sizing:border-box; user-select:none; -webkit-user-select:none; }
+  html,body { width:100%; height:100%; overflow:hidden; }
+  /* 浏览器模式：柔和背景；Electron 透明模式：背景透明 */
+  body {
+    font-family: "Microsoft YaHei", "PingFang SC", system-ui, sans-serif;
+    position:relative;
+  }
+  body.web { background: radial-gradient(circle at 50% 30%, #eaf6ff 0%, #d8ecfa 45%, #cfe6f7 100%); }
+  body.electron { background: transparent; }
+
+  /* ---------- 桌宠本体 ---------- */
+  #pet {
+    position:absolute;
+    width:var(--pet-w);
+    cursor:grab;
+    will-change: transform;
+    transform-origin: 50% 100%;
+    filter: drop-shadow(0 10px 16px rgba(30,60,90,.18));
+  }
+  #pet:active { cursor:grabbing; }
+  #pet img { width:100%; display:block; pointer-events:none; }
+
+  /* 待机浮动 */
+  @keyframes bob { 0%,100% { transform: translateY(0);} 50% { transform: translateY(-9px);} }
+  @keyframes breathe { 0%,100% { transform: scale(1);} 50% { transform: scale(1.015);} }
+  .idle { animation: bob 2.4s ease-in-out infinite; }
+  .idle .inner { animation: breathe 3.2s ease-in-out infinite; }
+
+  /* 走路 */
+  .walk { animation: bob 0.55s ease-in-out infinite; }
+
+  /* 点击反应：快速挤压回弹 */
+  @keyframes react {
+    0% { transform: scale(1,1); }
+    30% { transform: scale(1.18,0.82); }
+    60% { transform: scale(0.9,1.12); }
+    100% { transform: scale(1,1); }
+  }
+  .reacting .inner { animation: react 0.45s ease-in-out; }
+
+  /* ---------- 对话气泡 ---------- */
+  #bubble {
+    position:absolute;
+    bottom: calc(100% + 6px);
+    left:50%;
+    transform: translateX(-50%);
+    background:#fff;
+    color:#2c3e50;
+    padding:7px 12px;
+    border-radius:14px;
+    border:2px solid #ffd28a;
+    font-size:13px;
+    line-height:1.35;
+    white-space:nowrap;
+    box-shadow:0 4px 10px rgba(0,0,0,.12);
+    opacity:0;
+    transition:opacity .2s, transform .2s;
+    transform: translateX(-50%) translateY(4px);
+    pointer-events:none;
+    max-width:220px;
+  }
+  #bubble.show { opacity:1; transform: translateX(-50%) translateY(0); }
+  #bubble::after {
+    content:""; position:absolute; top:100%; left:50%; margin-left:-6px;
+    border:7px solid transparent; border-top-color:#ffd28a;
+  }
+
+  /* ---------- 控制面板 ---------- */
+  #panel {
+    position:absolute; top:14px; left:14px;
+    background:rgba(255,255,255,.86); backdrop-filter:blur(6px);
+    border:1px solid #dce9f5; border-radius:14px;
+    padding:12px 14px; color:#3a4a5a; font-size:13px;
+    box-shadow:0 8px 24px rgba(40,70,100,.12);
+    max-width:250px; z-index:5;
+  }
+  #panel h3 { font-size:14px; margin-bottom:8px; color:#1f6fb2; }
+  #panel .row { margin:4px 0; }
+  #panel button {
+    border:1px solid #cfe0ef; background:#fff; color:#2b6a9b;
+    border-radius:8px; padding:4px 9px; font-size:12px; cursor:pointer;
+    margin:2px 4px 2px 0; transition:background .15s, transform .1s;
+  }
+  #panel button:hover { background:#e7f2fb; }
+  #panel button:active { transform:scale(.96); }
+  #panel button.toggle-on { background:#2b9cff; border-color:#2b9cff; color:#fff; }
+  #tip { opacity:.72; font-size:12px; line-height:1.6; margin-top:6px; }
+  kbd { background:#eef4fa; border:1px solid #d3e2ef; border-radius:4px; padding:0 4px; font-size:11px; }
+
+  #drag-hint { position:fixed; bottom:16px; left:50%; transform:translateX(-50%);
+    background:rgba(0,0,0,.45); color:#fff; padding:6px 14px; border-radius:20px;
+    font-size:12px; opacity:0; transition:opacity .4s; pointer-events:none; }
+  #drag-hint.show { opacity:1; }
+</style>
+</head>
+<body class="web">
+  <!-- 控制面板 -->
+  <div id="panel">
+    <h3>🐧 企鹅娘桌宠</h3>
+    <div class="row">
+      <button id="btnWalk">🚶 走动</button>
+      <button id="btnSize">🔍 尺寸</button>
+    </div>
+    <div class="row">
+      <button id="btnCenter">🎯 归位</button>
+    </div>
+    <div id="tip">
+      拖动：按住企鹅移动<br/>
+      单击：跟她互动<br/>
+      方向键/WSAD：走路（←→侧面图）<br/>
+      <kbd>空格</kbd> 收/放控制面板
+    </div>
+  </div>
+
+  <!-- 桌宠 -->
+  <div id="pet">
+    <div id="bubble"></div>
+    <div class="inner"><img id="petImg" draggable="false" alt="企鹅娘" /></div>
+  </div>
+
+  <div id="drag-hint">点我拖走，单击互动</div>
+
+<script>
+(function () {
+  const IS_ELECTRON = window.electronAPI || /Electron/.test(navigator.userAgent);
+  document.body.classList.toggle('electron', !!IS_ELECTRON);
+  document.body.classList.toggle('web', !IS_ELECTRON);
+
+  const pet = document.getElementById('pet');
+  const img = document.getElementById('petImg');
+  const bubble = document.getElementById('bubble');
+  const panel = document.getElementById('panel');
+  const hint = document.getElementById('drag-hint');
+
+  // 精灵图：待机正面 / 走路侧面
+  const SPR = {
+    front: 'assets/front.png',
+    side:  'assets/side.png',
+    back:  'assets/back.png',
+  };
+  img.src = SPR.front;
+
+  // ---------- 状态 ----------
+  let mode = 'idle';        // idle | walk
+  let size = 150;           // 当前显示宽度 px
+  const MIN=80, MAX=280, STEP=20;
+  let facing = 1;           // 1 右, -1 左
+  let keys = {};
+  let reactTimer = null;
+
+  // ---------- 工具 ----------
+  function setSize(w) {
+    size = Math.max(MIN, Math.min(MAX, w));
+    pet.style.setProperty('--pet-w', size + 'px');
+  }
+  function say(text, ms) {
+    bubble.textContent = text;
+    bubble.classList.add('show');
+    clearTimeout(reactTimer);
+    reactTimer = setTimeout(() => bubble.classList.remove('show'), ms || 1800);
+  }
+  function react() {
+    pet.classList.remove('reacting');
+    void pet.offsetWidth;   // 重置动画
+    pet.classList.add('reacting');
+    const lines = [
+      '咕咕～', '今天也要加油鸭！', '摸摸头 🐧', '你回来啦！',
+      '吱吱～', '想吃小鱼干…', '我在呢，一直陪着你', '一起努力吧！',
+      '嘿嘿，被你发现啦', '快写代码，我监督你 👀',
+    ];
+    say(lines[Math.floor(Math.random()*lines.length)]);
+    setTimeout(() => pet.classList.remove('reacting'), 500);
+  }
+
+  // ---------- 拖动（浏览器模式：DOM 内移动；Electron：原生窗口拖动） ----------
+  let dragging=false, startX=0, startY=0, origX=0, origY=0, moved=0;
+  function petRect(){ return pet.getBoundingClientRect(); }
+
+  if (!IS_ELECTRON) {
+    pet.addEventListener('pointerdown', (e) => {
+      dragging = true; moved = 0;
+      const r = petRect();
+      startX = e.clientX; startY = e.clientY;
+      origX = r.left; origY = r.top;
+      pet.setPointerCapture(e.pointerId);
+      hint.classList.remove('show');
+    });
+    pet.addEventListener('pointermove', (e) => {
+      if (!dragging) return;
+      const dx = e.clientX - startX, dy = e.clientY - startY;
+      moved = Math.max(moved, Math.sqrt(dx*dx + dy*dy));
+      pet.style.left = (origX + dx) + 'px';
+      pet.style.top  = (origY + dy) + 'px';
+    });
+    pet.addEventListener('pointerup', (e) => {
+      if (!dragging) return;
+      dragging = false;
+      if (moved < 6) react();      // 视为点击
+      clampToWindow();
+    });
+  } else {
+    // Electron：整只企鹅是可拖拽区域（原生窗口随拖动移动）
+    pet.style.webkitAppRegion = 'drag';
+    pet.addEventListener('dblclick', (e) => { e.preventDefault(); react(); });
+  }
+
+  function clampToWindow(){
+    const r = petRect();
+    const maxX = window.innerWidth - r.width - 4;
+    const maxY = window.innerHeight - r.height - 4;
+    pet.style.left = Math.max(4, Math.min(maxX, r.left)) + 'px';
+    pet.style.top  = Math.max(4, Math.min(maxY, r.top)) + 'px';
+  }
+
+  // ---------- 走路（方向键 / WASD） ----------
+  function applySprite() {
+    if (mode === 'walk') {
+      img.src = SPR.side;
+      img.style.transform = 'scaleX(' + facing + ')';
+    } else {
+      img.src = SPR.front;
+      img.style.transform = 'scaleX(1)';
+    }
+  }
+  function step() {
+    const speed = 4;
+    let dx = 0, dy = 0;
+    if (keys.ArrowLeft || keys.a) dx -= 1;
+    if (keys.ArrowRight || keys.d) dx += 1;
+    if (keys.ArrowUp || keys.w) dy -= 1;
+    if (keys.ArrowDown || keys.s) dy += 1;
+    if (dx !== 0 || dy !== 0) {
+      if (mode !== 'walk') { mode='walk'; applySprite(); pet.classList.remove('idle'); pet.classList.add('walk'); }
+      if (dx !== 0) facing = dx > 0 ? 1 : -1;
+      const r = petRect();
+      const nx = r.left + dx*speed;
+      const ny = r.top + dy*speed;
+      pet.style.left = nx + 'px';
+      pet.style.top  = ny + 'px';
+      constrain();
+      if (!IS_ELECTRON) clampToWindow();
+    } else if (mode === 'walk') {
+      mode='idle'; applySprite(); pet.classList.remove('walk'); pet.classList.add('idle');
+    }
+  }
+  function constrain(){
+    const r = petRect();
+    // 保留一点点余量，企鹅可以走到屏幕边缘
+    const maxX = (IS_ELECTRON ? window.innerWidth : window.innerWidth) - r.width - 4;
+    const maxY = window.innerHeight - r.height - 4;
+    pet.style.left = Math.max(4, Math.min(maxX, r.left)) + 'px';
+    pet.style.top  = Math.max(4, Math.min(maxY, r.top)) + 'px';
+  }
+
+  document.addEventListener('keydown', (e) => {
+    const k = e.key.length===1 ? e.key : e.key;
+    if (['ArrowLeft','ArrowRight','ArrowUp','ArrowDown','a','d','w','s','A','D','W','S'].includes(k)) {
+      keys[k.toLowerCase()] = true; keys[e.key] = true;
+      e.preventDefault();
+    }
+    if (e.code === 'Space') {
+      e.preventDefault();
+      panel.style.display = (panel.style.display==='none' ? 'block' : 'none');
+    }
+  });
+  document.addEventListener('keyup', (e) => { keys[e.key.toLowerCase()]=false; keys[e.key]=false; });
+
+  // ---------- 控制面板按钮 ----------
+  document.getElementById('btnWalk').addEventListener('click', () => {
+    mode = (mode === 'idle') ? 'walk' : 'idle';
+    pet.classList.toggle('walk', mode==='walk');
+    pet.classList.toggle('idle', mode!=='walk');
+    applySprite();
+  });
+  document.getElementById('btnSize').addEventListener('click', () => setSize(size + STEP));
+  document.getElementById('btnCenter').addEventListener('click', () => {
+    const r = petRect();
+    pet.style.left = (window.innerWidth/2 - r.width/2) + 'px';
+    pet.style.top  = (window.innerHeight - r.height - 40) + 'px';
+  });
+
+  // 偏好提示
+  setSize(150);
+  pet.style.left = '50%';
+  pet.style.top = '62%';
+  requestAnimationFrame(() => {
+    if (!IS_ELECTRON) { pet.style.left = (window.innerWidth/2 - petRect().width/2) + 'px'; }
+  });
+  setTimeout(() => hint.classList.add('show'), 1200);
+  setTimeout(() => hint.classList.remove('show'), 4200);
+
+  // ---------- 游戏循环（走路） ----------
+  setInterval(step, 16);
+})();
+</script>
+</body>
+</html>
