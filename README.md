@@ -25,8 +25,10 @@ desktop-pet/
 用 Desktop 自带的 `dsh` CLI 把插件装进 `desktop` profile（你当前的镜像，本机已装好）：
 
 ```sh
-"C:\Users\liuzhanhong\AppData\Roaming\DSH Desktop\host-commands\desktop\bin\dsh.cmd" plugin --profile desktop add "file:C:/Users/liuzhanhong/Desktop/OH-WorkSpace/desktop-pet/plugin"
+"<DSH_DESKTOP_DIR>\host-commands\desktop\bin\dsh.cmd" plugin --profile desktop add "file:<PATH_TO_REPO>/plugin"
 ```
+
+将 `<DSH_DESKTOP_DIR>` 替换为本机 DSH Desktop 的安装数据目录，将 `<PATH_TO_REPO>` 替换为本仓库在本机的实际路径。
 
 该命令会把它追加到 `dsh.profile.bundles`、写入依赖，并放进 `profiles/desktop/node_modules`。因为 profile 是 `patchReload: "live"`，刷新窗口后企鹅娘会出现在**左下角**；如果没出现，重启一次 DSH Desktop 应用即可。
 
